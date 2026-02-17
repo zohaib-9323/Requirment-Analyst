@@ -38,7 +38,7 @@ export default function Header() {
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
             </span>
             <Sparkles className="w-3 h-3" />
-            Gemini 2.5
+            OpenRouter
           </div>
         </div>
       </div>

@@ -1,6 +1,4 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 const SYSTEM_PROMPT = `You are a Senior Software Architect & Requirements Analyst with 15+ years of experience building production systems. You have reviewed thousands of project requirement documents and have a razor-sharp eye for spotting gaps, ambiguities, and potential pitfalls.
 
@@ -45,51 +43,155 @@ Respond ONLY with valid JSON in this exact format (no markdown, no code fences, 
   ]
 }`;
 
-async function analyzeRequirements(requirements) {
-  const model = genAI.getGenerativeModel({
-    model: "gemini-2.5-flash",
-    generationConfig: {
-      temperature: 0.7,
-      maxOutputTokens: 8192,
-    },
-  });
+function getEnvOrThrow(name) {
+  const val = process.env[name];
+  if (!val) throw new Error(`${name} is not set in the server environment.`);
+  return val;
+}
 
-  const prompt = `${SYSTEM_PROMPT}\n\n---\n\nPROJECT REQUIREMENTS:\n\n${requirements}`;
-
-  const result = await model.generateContent(prompt);
-  const response = result.response;
-  const text = response.text();
-
-  // Clean the response — remove markdown code fences if present
-  let cleaned = text.trim();
+function cleanModelText(text) {
+  let cleaned = String(text || "").trim();
   if (cleaned.startsWith("```")) {
     cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
   }
+  return cleaned.trim();
+}
 
+function normalizeAnalysisShape(parsed) {
+  const requiredKeys = [
+    "missingRequirements",
+    "ambiguousParts",
+    "edgeCases",
+    "technicalQuestions",
+    "businessLogicQuestions",
+  ];
+
+  for (const key of requiredKeys) {
+    if (!Array.isArray(parsed[key])) parsed[key] = [];
+  }
+
+  return parsed;
+}
+
+function parseAnalysisJson(rawText) {
+  const cleaned = cleanModelText(rawText);
+  const parsed = JSON.parse(cleaned);
+  return normalizeAnalysisShape(parsed);
+}
+
+async function callOpenRouter({ model, apiKey, messages, reasoningEnabled }) {
+  if (typeof fetch !== "function") {
+    throw new Error(
+      "Global fetch is not available. Use Node.js 18+ (or add a fetch polyfill)."
+    );
+  }
+
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+  };
+
+  // Optional OpenRouter metadata headers (helpful for dashboards/limits)
+  if (process.env.OPENROUTER_HTTP_REFERER) {
+    headers["HTTP-Referer"] = process.env.OPENROUTER_HTTP_REFERER;
+  }
+  if (process.env.OPENROUTER_APP_TITLE) {
+    headers["X-Title"] = process.env.OPENROUTER_APP_TITLE;
+  }
+
+  const body = {
+    model,
+    messages,
+  };
+
+  // OpenRouter reasoning support varies by model/provider
+  if (reasoningEnabled) {
+    body.reasoning = { enabled: true };
+  }
+
+  const res = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(
+      `OpenRouter request failed (${res.status} ${res.statusText})${
+        text ? `: ${text}` : ""
+      }`
+    );
+  }
+
+  const json = await res.json();
+  const msg = json?.choices?.[0]?.message;
+  const content = msg?.content ?? "";
+  const reasoning_details = msg?.reasoning_details;
+
+  if (!content || typeof content !== "string") {
+    throw new Error("OpenRouter returned an empty assistant message.");
+  }
+
+  return { content, reasoning_details };
+}
+
+async function analyzeRequirements(requirements) {
   try {
-    const parsed = JSON.parse(cleaned);
+    const apiKey = getEnvOrThrow("OPENROUTER_API_KEY");
+    const model = process.env.OPENROUTER_MODEL || "stepfun/step-3.5-flash:free";
 
-    // Validate structure
-    const requiredKeys = [
-      "missingRequirements",
-      "ambiguousParts",
-      "edgeCases",
-      "technicalQuestions",
-      "businessLogicQuestions",
+    const baseMessages = [
+      { role: "system", content: SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: `PROJECT REQUIREMENTS:\n\n${requirements}`,
+      },
     ];
 
-    for (const key of requiredKeys) {
-      if (!Array.isArray(parsed[key])) {
-        parsed[key] = [];
-      }
-    }
+    // First call with reasoning enabled
+    const first = await callOpenRouter({
+      model,
+      apiKey,
+      messages: baseMessages,
+      reasoningEnabled: true,
+    });
 
-    return parsed;
-  } catch (parseError) {
-    console.error("Failed to parse Gemini response:", parseError.message);
-    console.error("Raw response:", text);
+    // Parse attempt #1
+    try {
+      return parseAnalysisJson(first.content);
+    } catch (parseError) {
+      // If model output wasn't valid JSON, do a second call preserving reasoning_details
+      const messages = [
+        ...baseMessages,
+        {
+          role: "assistant",
+          content: first.content,
+          ...(first.reasoning_details
+            ? { reasoning_details: first.reasoning_details }
+            : {}),
+        },
+        {
+          role: "user",
+          content:
+            "Are you sure? Think carefully. Respond ONLY with valid JSON in the exact schema shown earlier (no markdown, no code fences).",
+        },
+      ];
+
+      const second = await callOpenRouter({
+        model,
+        apiKey,
+        messages,
+        reasoningEnabled: false,
+      });
+
+      return parseAnalysisJson(second.content);
+    }
+  } catch (error) {
+    console.error("Failed to analyze requirements via OpenRouter:", error);
     throw new Error(
-      "Failed to parse AI response. The model returned an invalid format."
+      error?.message ||
+        "Failed to analyze requirements. Check your OpenRouter configuration."
     );
   }
 }

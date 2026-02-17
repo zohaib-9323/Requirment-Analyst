@@ -5,13 +5,13 @@ AI-powered single-page application that analyzes project requirements like a sen
 ![Requirement Analyst](https://img.shields.io/badge/Next.js-15-black?style=flat-square&logo=next.js)
 ![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react)
 ![Express](https://img.shields.io/badge/Express-4-000000?style=flat-square&logo=express)
-![Gemini](https://img.shields.io/badge/Google-Gemini%202.5-4285F4?style=flat-square&logo=google)
+![OpenRouter](https://img.shields.io/badge/OpenRouter-API-111827?style=flat-square)
 
 ---
 
 ## Overview
 
-**Requirement Analyst** is a full-stack web app that lets you paste raw project requirements (PRDs, user stories, specs) and get an instant, structured analysis. The app uses **Google Gemini AI** to think like a senior architect and surface:
+**Requirement Analyst** is a full-stack web app that lets you paste raw project requirements (PRDs, user stories, specs) and get an instant, structured analysis. The app uses an **OpenRouter-hosted LLM** to think like a senior architect and surface:
 
 - **Missing requirements** — What’s clearly needed but not mentioned  
 - **Ambiguous / confusing parts** — Vague or multi-interpretation statements  
@@ -47,7 +47,7 @@ Requirment-Analyst/
 
 - **Frontend:** Single-page app (SPA). One page: paste requirements → analyze → view/export results.  
 - **Backend:** REST API. One main endpoint: `POST /api/analyze` — accepts `requirements` (string), returns structured analysis JSON.  
-- **AI:** Google Generative AI (Gemini 2.5 Flash) with a custom “senior architect” system prompt and strict JSON output.
+- **AI:** OpenRouter Chat Completions with a custom “senior architect” system prompt and strict JSON output.
 
 ---
 
@@ -69,7 +69,7 @@ Requirment-Analyst/
 |----------|--------------|
 | Frontend | Next.js 15, React 19, TypeScript, Tailwind CSS, Framer Motion, Lucide Icons |
 | Backend  | Node.js, Express, CORS, dotenv |
-| AI       | Google Generative AI (Gemini 2.5 Flash) |
+| AI       | OpenRouter Chat Completions (default model: `stepfun/step-3.5-flash:free`) |
 
 ---
 
@@ -77,7 +77,7 @@ Requirment-Analyst/
 
 - **Node.js** 18+  
 - **npm** (or yarn/pnpm)  
-- **Google Gemini API key** — [Get one here](https://aistudio.google.com/apikey)
+- **OpenRouter API key** — [Get one here](https://openrouter.ai/keys)
 
 ---
 
@@ -106,10 +106,11 @@ Create `server/.env` (do not commit this file):
 
 ```env
 PORT=5001
-GEMINI_API_KEY=your_gemini_api_key_here
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+OPENROUTER_MODEL=stepfun/step-3.5-flash:free
 ```
 
-Replace `your_gemini_api_key_here` with your actual Gemini API key.
+Replace `your_openrouter_api_key_here` with your actual OpenRouter API key.
 
 ### 4. Run the app
 
@@ -201,7 +202,7 @@ Returns `{ "status": "ok", "timestamp": "..." }` for health checks.
 
 ## Security & Environment
 
-- **Do not commit** `server/.env` or any file containing your Gemini API key.  
+- **Do not commit** `server/.env` or any file containing your OpenRouter API key.  
 - `.gitignore` should include: `node_modules/`, `.next/`, `.env`, `*.tsbuildinfo`.  
 - Keep the API key only on the server; the frontend should never receive or store it.
 
