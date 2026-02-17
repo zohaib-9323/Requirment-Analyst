@@ -20,7 +20,8 @@ IMPORTANT RULES:
 - Be specific and practical — generic advice is useless
 - Reference the actual requirements in your analysis
 - Each item should have a clear "title" and a detailed "description"
-- Provide 4-8 items per category (more if the requirements are complex)
+- Provide 3-5 items per category (fewer if requirements are short). If the response would be too long, reduce the number of items to ensure the JSON is complete.
+- Keep descriptions concise (max ~3 sentences each)
 - Think about what would actually go wrong in production
 
 Respond ONLY with valid JSON in this exact format (no markdown, no code fences, just raw JSON):
@@ -79,12 +80,21 @@ function parseAnalysisJson(rawText) {
   return normalizeAnalysisShape(parsed);
 }
 
-async function callOpenRouter({ model, apiKey, messages, reasoningEnabled }) {
+async function callOpenRouter({
+  model,
+  apiKey,
+  messages,
+  reasoningEnabled,
+  timeoutMs = 25000,
+}) {
   if (typeof fetch !== "function") {
     throw new Error(
       "Global fetch is not available. Use Node.js 18+ (or add a fetch polyfill)."
     );
   }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   const headers = {
     Authorization: `Bearer ${apiKey}`,
@@ -102,6 +112,8 @@ async function callOpenRouter({ model, apiKey, messages, reasoningEnabled }) {
   const body = {
     model,
     messages,
+    temperature: 0.7,
+    max_tokens: 2500,
   };
 
   // OpenRouter reasoning support varies by model/provider
@@ -109,37 +121,85 @@ async function callOpenRouter({ model, apiKey, messages, reasoningEnabled }) {
     body.reasoning = { enabled: true };
   }
 
-  const res = await fetch(OPENROUTER_URL, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
+  let res;
+  try {
+    res = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (e) {
+    if (e?.name === "AbortError") {
+      throw new Error(
+        `OpenRouter request timed out after ${Math.round(timeoutMs / 1000)}s`
+      );
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    const clipped = text && text.length > 1500 ? `${text.slice(0, 1500)}…` : text;
     throw new Error(
       `OpenRouter request failed (${res.status} ${res.statusText})${
-        text ? `: ${text}` : ""
+        clipped ? `: ${clipped}` : ""
       }`
     );
   }
 
   const json = await res.json();
   const msg = json?.choices?.[0]?.message;
-  const content = msg?.content ?? "";
-  const reasoning_details = msg?.reasoning_details;
+  let content = msg?.content ?? "";
+  // OpenRouter/provider reasoning fields vary by model
+  const reasoning_details = msg?.reasoning_details ?? msg?.reasoning;
+  const finish_reason = json?.choices?.[0]?.finish_reason ?? null;
 
-  if (!content || typeof content !== "string") {
-    throw new Error("OpenRouter returned an empty assistant message.");
+  // Some providers return multi-part content arrays
+  if (Array.isArray(content)) {
+    content = content
+      .map((part) => {
+        if (!part) return "";
+        if (typeof part === "string") return part;
+        if (part.type === "text" && typeof part.text === "string") return part.text;
+        return "";
+      })
+      .join("");
   }
 
-  return { content, reasoning_details };
+  if (typeof content !== "string") content = "";
+  content = content.trim();
+
+  // Some models may return reasoning without final content on the first pass.
+  // In that case, we'll allow empty content and let the caller do a follow-up call.
+  if (!content && !reasoning_details) {
+    const debug = JSON.stringify(
+      {
+        error: json?.error,
+        choices0: json?.choices?.[0],
+      },
+      null,
+      2
+    );
+    const clipped = debug.length > 1500 ? `${debug.slice(0, 1500)}…` : debug;
+    throw new Error(
+      `OpenRouter returned an empty assistant message. Debug: ${clipped}`
+    );
+  }
+
+  return { content, reasoning_details, finish_reason };
 }
 
 async function analyzeRequirements(requirements) {
   try {
     const apiKey = getEnvOrThrow("OPENROUTER_API_KEY");
     const model = process.env.OPENROUTER_MODEL || "stepfun/step-3.5-flash:free";
+    const timeoutMs = Number(process.env.OPENROUTER_TIMEOUT_MS || 25000);
+    const reasoningEnabled =
+      String(process.env.OPENROUTER_REASONING_ENABLED || "").toLowerCase() ===
+      "true";
 
     const baseMessages = [
       { role: "system", content: SYSTEM_PROMPT },
@@ -149,17 +209,80 @@ async function analyzeRequirements(requirements) {
       },
     ];
 
-    // First call with reasoning enabled
+    // First call (optionally with reasoning enabled)
+    const startedAt = Date.now();
     const first = await callOpenRouter({
       model,
       apiKey,
       messages: baseMessages,
-      reasoningEnabled: true,
+      reasoningEnabled,
+      timeoutMs,
     });
+
+    // If the model returned reasoning but no final content (or it truncated), do a follow-up call
+    if (!first.content || first.finish_reason === "length") {
+      const messages = [
+        ...baseMessages,
+        {
+          role: "assistant",
+          content: first.content || "",
+          ...(first.reasoning_details
+            ? { reasoning_details: first.reasoning_details }
+            : {}),
+        },
+        {
+          role: "user",
+          content:
+            "Now output ONLY the final answer as valid JSON in the exact schema (no markdown, no code fences). Keep it short: max 3 items per category.",
+        },
+      ];
+
+      const second = await callOpenRouter({
+        model,
+        apiKey,
+        messages,
+        reasoningEnabled: false,
+        timeoutMs,
+      });
+
+      try {
+        const parsed = parseAnalysisJson(second.content);
+        console.log(
+          `✅ OpenRouter analysis succeeded (follow-up) in ${Date.now() - startedAt}ms (${model})`
+        );
+        return parsed;
+      } catch (e) {
+        // Last resort: ask for minimal valid JSON to avoid truncation
+        const third = await callOpenRouter({
+          model,
+          apiKey,
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            {
+              role: "user",
+              content:
+                `Return ONLY valid JSON in the required schema for these requirements. ` +
+                `If needed, return 1-2 items per category to keep the JSON complete.\n\nREQUIREMENTS:\n${requirements}`,
+            },
+          ],
+          reasoningEnabled: false,
+          timeoutMs,
+        });
+        const parsed = parseAnalysisJson(third.content);
+        console.log(
+          `✅ OpenRouter analysis succeeded (3rd try) in ${Date.now() - startedAt}ms (${model})`
+        );
+        return parsed;
+      }
+    }
 
     // Parse attempt #1
     try {
-      return parseAnalysisJson(first.content);
+      const parsed = parseAnalysisJson(first.content);
+      console.log(
+        `✅ OpenRouter analysis succeeded in ${Date.now() - startedAt}ms (${model})`
+      );
+      return parsed;
     } catch (parseError) {
       // If model output wasn't valid JSON, do a second call preserving reasoning_details
       const messages = [
@@ -174,7 +297,7 @@ async function analyzeRequirements(requirements) {
         {
           role: "user",
           content:
-            "Are you sure? Think carefully. Respond ONLY with valid JSON in the exact schema shown earlier (no markdown, no code fences).",
+            "Respond ONLY with valid JSON in the exact schema (no markdown, no code fences). Keep it short: max 3 items per category.",
         },
       ];
 
@@ -183,9 +306,14 @@ async function analyzeRequirements(requirements) {
         apiKey,
         messages,
         reasoningEnabled: false,
+        timeoutMs,
       });
 
-      return parseAnalysisJson(second.content);
+      const parsed = parseAnalysisJson(second.content);
+      console.log(
+        `✅ OpenRouter analysis succeeded (2-pass) in ${Date.now() - startedAt}ms (${model})`
+      );
+      return parsed;
     }
   } catch (error) {
     console.error("Failed to analyze requirements via OpenRouter:", error);
