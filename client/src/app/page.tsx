@@ -34,12 +34,20 @@ export default function Home() {
         body: JSON.stringify({ requirements }),
       });
 
-      const data = await response.json();
-
+      // Check response status BEFORE parsing JSON
       if (!response.ok) {
-        throw new Error(data.message || "Failed to analyze requirements");
+        const text = await response.text();
+        let errorMessage = `Server error: ${response.status} ${response.statusText}`;
+        try {
+          const errorData = JSON.parse(text);
+          if (errorData.message) errorMessage = errorData.message;
+        } catch (e) {
+          if (text) errorMessage = text;
+        }
+        throw new Error(errorMessage);
       }
 
+      const data = await response.json();
       setResult(data.analysis);
     } catch (err: unknown) {
       const message =
