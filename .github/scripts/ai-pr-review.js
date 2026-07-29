@@ -267,22 +267,28 @@ async function getPRFiles() {
 
 /**
  * Compute the diff position (1-indexed line in the unified diff) for a given
- * file's last added line. Falls back to position 1 if not deterministic.
- * The GitHub review API needs `position` = line number within the diff hunk.
+/**
+ * Find the last added line number (1-indexed in the new file) from a patch hunk.
  */
-function getDiffPosition(patch) {
-  if (!patch) return 1;
+function getLineFromPatch(patch) {
+  if (!patch) return null;
   const lines = patch.split("\n");
-  // Walk the patch and count diff lines to find the last '+' line position
-  let position = 0;
-  let lastAddedPosition = 1;
+  let currentLine = 0;
+  let lastAddedLine = null;
+
   for (const line of lines) {
-    position++;
+    const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (hunkMatch) {
+      currentLine = parseInt(hunkMatch[1], 10) - 1;
+    }
     if (line.startsWith("+") && !line.startsWith("+++")) {
-      lastAddedPosition = position;
+      currentLine++;
+      lastAddedLine = currentLine;
+    } else if (!line.startsWith("-")) {
+      if (currentLine > 0) currentLine++;
     }
   }
-  return lastAddedPosition;
+  return lastAddedLine;
 }
 
 /**
@@ -299,7 +305,6 @@ async function postPRReview(review, prFiles) {
   // Build per-file inline comments
   const comments = [];
   for (const fc of review.fileComments || []) {
-    // Find matching PR file
     const prFile = prFiles.find(
       (f) => f.filename === fc.path || f.filename.endsWith(fc.path)
     );
@@ -307,12 +312,15 @@ async function postPRReview(review, prFiles) {
       console.log(`⚠️  Skipping inline comment for ${fc.path} (no patch/not in PR)`);
       continue;
     }
-    const position = getDiffPosition(prFile.patch);
-    comments.push({
-      path: prFile.filename,
-      position,
-      body: `### 🤖 AI File Review\n\n${fc.comment}`,
-    });
+    const targetLine = getLineFromPatch(prFile.patch);
+    if (targetLine) {
+      comments.push({
+        path: prFile.filename,
+        line: targetLine,
+        side: "RIGHT",
+        body: `### 🤖 AI File Review\n\n${fc.comment}`,
+      });
+    }
   }
 
   // Build the main review body
