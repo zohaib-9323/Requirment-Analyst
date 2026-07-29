@@ -13,6 +13,7 @@ import {
   List,
   Copy,
   Check,
+  Share2,
 } from "lucide-react";
 
 interface AnalysisResultProps {
@@ -143,6 +144,23 @@ export default function AnalysisResult({
             >
               <Download className="w-3.5 h-3.5" />
               Export .md
+            </button>
+            <button
+              onClick={() => {
+                if (navigator.share) {
+                  navigator.share({
+                    title: "Requirements Analysis Report",
+                    text: `Check out this AI requirements analysis report with ${totalIssues} findings!`,
+                    url: window.location.href,
+                  }).catch(() => {});
+                } else {
+                  handleCopyAll();
+                }
+              }}
+              className="btn-secondary !text-xs"
+            >
+              <Share2 className="w-3.5 h-3.5 text-blue-400" />
+              Share
             </button>
             <button
               onClick={onReset}
