@@ -5,7 +5,6 @@
  * to review pull request diffs and post structured feedback as PR comments.
  */
 
-import { OpenRouter } from "@openrouter/sdk";
 import { Octokit } from "@octokit/rest";
 import { execSync } from "child_process";
 
@@ -20,8 +19,15 @@ const PR_BODY = process.env.PR_BODY || "(no description)";
 const BASE_SHA = process.env.BASE_SHA;
 const HEAD_SHA = process.env.HEAD_SHA;
 
-const MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free";
+// Model fallback chain — tries each in order until one returns a non-empty response
+const MODELS = [
+  "nvidia/nemotron-3-ultra-550b-a55b:free",
+  "stepfun/step-3.5-flash:free",
+  "deepseek/deepseek-r1-0528:free",
+  "google/gemma-3-27b-it:free",
+];
 const MAX_DIFF_CHARS = 12000; // Trim large diffs to stay within token limits
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 // ─── Validate env ──────────────────────────────────────────────────────────
 
@@ -128,37 +134,69 @@ Rules:
 }
 
 /**
- * Stream the AI response and collect the full text.
+ * Call OpenRouter with a single model (non-streaming for reliability in CI).
+ * Returns the text content or empty string if the model returned nothing.
  */
-async function getAIReview(prompt) {
-  const openrouter = new OpenRouter({ apiKey: OPENROUTER_API_KEY });
-
-  console.log(`🤖 Sending diff to ${MODEL} via OpenRouter...`);
-
-  const stream = await openrouter.chat.send({
-    chatRequest: {
-      model: MODEL,
-      messages: [{ role: "user", content: prompt }],
-      stream: true,
+async function callModel(model, prompt) {
+  const res = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+      "Content-Type": "application/json",
     },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.3,
+      max_tokens: 3000,
+    }),
+    signal: AbortSignal.timeout(60000),
   });
 
-  let response = "";
-  for await (const chunk of stream) {
-    const content = chunk.choices[0]?.delta?.content;
-    if (content) {
-      response += content;
-      process.stdout.write(content);
-    }
-    if (chunk.usage) {
-      console.log(
-        `\n📊 Reasoning tokens used: ${chunk.usage.completionTokensDetails?.reasoningTokens ?? "N/A"}`
-      );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`OpenRouter ${res.status}: ${text.slice(0, 300)}`);
+  }
+
+  const json = await res.json();
+
+  // Log reasoning token usage if provided
+  const usage = json.usage;
+  if (usage) {
+    console.log(
+      `📊 Tokens — prompt: ${usage.prompt_tokens}, completion: ${usage.completion_tokens}` +
+      (usage.completion_tokens_details?.reasoning_tokens
+        ? `, reasoning: ${usage.completion_tokens_details.reasoning_tokens}`
+        : "")
+    );
+  }
+
+  const content = json?.choices?.[0]?.message?.content ?? "";
+  return typeof content === "string" ? content.trim() : "";
+}
+
+/**
+ * Try each model in MODELS fallback chain until one returns a non-empty response.
+ */
+async function getAIReview(prompt) {
+  let lastError = null;
+
+  for (const model of MODELS) {
+    console.log(`\n🤖 Trying model: ${model}`);
+    try {
+      const content = await callModel(model, prompt);
+      if (content) {
+        console.log(`✅ Got response from ${model} (${content.length} chars)`);
+        return content;
+      }
+      console.log(`⚠️  ${model} returned empty content — trying next model...`);
+    } catch (err) {
+      lastError = err;
+      console.log(`⚠️  ${model} failed: ${err.message} — trying next model...`);
     }
   }
 
-  console.log("\n✅ AI response received.");
-  return response;
+  throw lastError ?? new Error("All models returned empty responses.");
 }
 
 /**
