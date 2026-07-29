@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Scan, Github, Sparkles } from "lucide-react";
+import { Scan, Github, Sparkles, History } from "lucide-react";
 
 export default function Header() {
   return (
@@ -32,6 +32,11 @@ export default function Header() {
 
         {/* Right side */}
         <div className="flex items-center gap-3">
+          <button className="btn-secondary !text-xs flex items-center gap-1.5 border-white/[0.08] hover:bg-white/[0.05]">
+            <History className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="hidden sm:inline">History</span>
+          </button>
+
           <div className="pill bg-emerald-500/[0.08] border-emerald-500/20 text-emerald-400">
             <span className="relative flex h-1.5 w-1.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
