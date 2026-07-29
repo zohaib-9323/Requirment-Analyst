@@ -32,7 +32,7 @@ jobs:
 
       - name: Run AI PR Review
         env:
-          OPENROUTER_API_KEY: ${{ vars.OPENROUTER_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
