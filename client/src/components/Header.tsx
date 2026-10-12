@@ -1,47 +1,54 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { Scan, Github, Sparkles } from "lucide-react";
+import { Plus } from "lucide-react";
+import ThemeToggle from "./ThemeToggle";
 
-export default function Header() {
+export function Logo() {
   return (
-    <motion.header
-      initial={{ y: -20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.5, ease: "easeOut" }}
-      className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#06060b]/80 backdrop-blur-xl"
+    <span
+      aria-hidden
+      className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-ink text-bg"
     >
-      <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-        {/* Logo */}
-        <div className="flex items-center gap-3">
-          <div className="relative group">
-            <div className="absolute -inset-1 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-600/20 blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-            <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-              <Scan className="w-[18px] h-[18px] text-white" />
-            </div>
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-[15px] font-bold text-white tracking-tight">
-              ReqAnalyst
-            </span>
-            <span className="hidden sm:inline text-[10px] font-medium text-gray-600 uppercase tracking-widest">
-              v1.0
-            </span>
-          </div>
-        </div>
+      <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none">
+        <path
+          d="M7 4h7l4 4v12H7z"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M10 12h5M10 15.5h3"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+        />
+        <circle cx="17.5" cy="17.5" r="3.2" fill="rgb(var(--accent))" />
+      </svg>
+    </span>
+  );
+}
 
-        {/* Right side */}
-        <div className="flex items-center gap-3">
-          <div className="pill bg-emerald-500/[0.08] border-emerald-500/20 text-emerald-400">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
-            </span>
-            <Sparkles className="w-3 h-3" />
-            OpenRouter
-          </div>
+export default function Header({ onNew }: { onNew?: () => void }) {
+  return (
+    <header className="sticky top-0 z-40 border-b border-line/70 bg-bg/80 backdrop-blur-md">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+        <a href="/" className="flex items-center gap-2.5 rounded-lg">
+          <Logo />
+          <span className="text-[15px] font-semibold tracking-tight">
+            Requirement Analyst
+          </span>
+        </a>
+        <div className="flex items-center gap-1">
+          {onNew && (
+            <button type="button" onClick={onNew} className="btn-outline">
+              <Plus className="h-4 w-4" aria-hidden />
+              <span className="hidden sm:inline">New analysis</span>
+              <span className="sr-only sm:hidden">New analysis</span>
+            </button>
+          )}
+          <ThemeToggle />
         </div>
       </div>
-    </motion.header>
+    </header>
   );
 }

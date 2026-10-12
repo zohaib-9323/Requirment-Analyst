@@ -1,122 +1,44 @@
 "use client";
 
 import { motion } from "framer-motion";
-import {
-  Search,
-  HelpCircle,
-  Zap,
-  AlertTriangle,
-  Code2,
-  Briefcase,
-} from "lucide-react";
+import { Clock, ListChecks, FileDown } from "lucide-react";
 
-const features = [
-  { icon: Search, label: "Missing Pieces", color: "text-red-400" },
-  { icon: HelpCircle, label: "Ambiguities", color: "text-amber-400" },
-  { icon: Zap, label: "Edge Cases", color: "text-orange-400" },
-  { icon: Code2, label: "Tech Gaps", color: "text-blue-400" },
-  { icon: Briefcase, label: "Business Logic", color: "text-purple-400" },
+const points = [
+  { icon: ListChecks, text: "Five kinds of findings" },
+  { icon: Clock, text: "Ready in 1–2 minutes" },
+  { icon: FileDown, text: "Export as a checklist" },
 ];
-
-const container = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.08, delayChildren: 0.3 },
-  },
-};
-
-const item = {
-  hidden: { opacity: 0, y: 12 },
-  show: { opacity: 1, y: 0 },
-};
 
 export default function HeroSection() {
   return (
-    <section className="pt-20 pb-12 text-center">
+    <section className="pb-10 pt-14 text-center sm:pt-20">
       <motion.div
-        variants={container}
-        initial="hidden"
-        animate="show"
-        className="max-w-3xl mx-auto"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className="mx-auto max-w-3xl"
       >
-        {/* Badge */}
-        <motion.div variants={item} className="mb-8">
-          <span className="pill bg-indigo-500/[0.08] border-indigo-500/15 text-indigo-400">
-            <svg
-              className="w-3 h-3"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-            >
-              <path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41L12 0Z" />
-            </svg>
-            Think like a Senior Architect
-          </span>
-        </motion.div>
-
-        {/* Headline */}
-        <motion.h1
-          variants={item}
-          className="text-5xl sm:text-6xl md:text-7xl font-extrabold tracking-tight leading-[1.05] mb-6"
-        >
-          <span className="text-white">Catch what</span>
-          <br />
-          <span className="gradient-text-hero">everyone misses</span>
-        </motion.h1>
-
-        {/* Subheadline */}
-        <motion.p
-          variants={item}
-          className="text-base sm:text-lg text-gray-400 max-w-xl mx-auto leading-relaxed mb-10"
-        >
-          Paste your project requirements and let AI surface the missing pieces,
-          ambiguities, and edge cases — the questions a senior engineer
-          would ask before writing a single line of code.
-        </motion.p>
-
-        {/* Feature pills */}
-        <motion.div
-          variants={item}
-          className="flex flex-wrap justify-center gap-2.5"
-        >
-          {features.map((feat) => (
-            <span
-              key={feat.label}
-              className="pill bg-white/[0.03] border-white/[0.07] text-gray-400 hover:text-gray-200 hover:border-white/[0.14] hover:bg-white/[0.06] cursor-default"
-            >
-              <feat.icon className={`w-3 h-3 ${feat.color}`} />
-              {feat.label}
-            </span>
+        <p className="eyebrow">AI requirements review</p>
+        <h1 className="mt-5 text-balance text-4xl font-semibold leading-[1.1] tracking-tight sm:text-6xl">
+          Find the gaps in your spec{" "}
+          <span className="font-serif text-[1.12em] font-normal italic text-accent">
+            before
+          </span>{" "}
+          they become bugs.
+        </h1>
+        <p className="mx-auto mt-6 max-w-xl text-pretty text-base leading-relaxed text-muted sm:text-lg">
+          Paste your requirements and get the questions a senior architect would
+          ask — what&apos;s missing, what&apos;s unclear, and what could break —
+          before anyone writes a line of code.
+        </p>
+        <ul className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted">
+          {points.map(({ icon: Icon, text }) => (
+            <li key={text} className="flex items-center gap-2">
+              <Icon className="h-4 w-4 text-accent" aria-hidden />
+              {text}
+            </li>
           ))}
-        </motion.div>
-
-        {/* Scroll indicator */}
-        <motion.div
-          variants={item}
-          className="mt-12 flex flex-col items-center gap-2"
-        >
-          <span className="text-[11px] text-gray-600 uppercase tracking-widest font-medium">
-            Paste & analyze
-          </span>
-          <motion.div
-            animate={{ y: [0, 6, 0] }}
-            transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-          >
-            <svg
-              className="w-5 h-5 text-gray-700"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M19 14l-7 7m0 0l-7-7m7 7V3"
-              />
-            </svg>
-          </motion.div>
-        </motion.div>
+        </ul>
       </motion.div>
     </section>
   );

@@ -1,148 +1,137 @@
 "use client";
 
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  ChevronDown,
-  AlertTriangle,
-  HelpCircle,
-  Zap,
-  Code,
-  Briefcase,
-  Copy,
-  Check,
-} from "lucide-react";
-import { AnalysisItem, AnalysisCategory } from "@/types";
-
-const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-  AlertTriangle,
-  HelpCircle,
-  Zap,
-  Code,
-  Briefcase,
-};
+import { Check, CheckCircle2, Circle, Copy } from "lucide-react";
+import { AnalysisCategory, AnalysisItem } from "@/types";
+import { findingId } from "@/lib/report";
+import CategoryIcon from "./CategoryIcon";
 
 interface CategoryCardProps {
   category: AnalysisCategory;
   items: AnalysisItem[];
+  addressed: Set<string>;
+  onToggle: (id: string) => void;
+}
+
+function FindingRow({
+  category,
+  item,
+  index,
+  done,
+  onToggle,
+}: {
+  category: AnalysisCategory;
+  item: AnalysisItem;
   index: number;
+  done: boolean;
+  onToggle: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(`${item.title}\n${item.description}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard unavailable; nothing to do.
+    }
+  };
+
+  return (
+    <li className="group flex gap-3 px-5 py-4 transition-colors hover:bg-surface-2/50 sm:gap-4 sm:px-6">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-pressed={done}
+        aria-label={done ? `Mark "${item.title}" as open` : `Mark "${item.title}" as addressed`}
+        title={done ? "Addressed" : "Mark as addressed"}
+        className="mt-0.5 shrink-0 self-start rounded-full"
+      >
+        {done ? (
+          <CheckCircle2 className="h-5 w-5 text-success" aria-hidden />
+        ) : (
+          <Circle className="h-5 w-5 text-subtle transition-colors group-hover:text-muted" aria-hidden />
+        )}
+      </button>
+
+      <div className="min-w-0 flex-1">
+        <h4
+          className={`text-[15px] font-semibold leading-snug ${
+            done ? "text-subtle line-through decoration-subtle/50" : "text-ink"
+          }`}
+        >
+          <span className={`mr-2 font-mono text-xs font-medium ${category.text}`}>
+            {String(index + 1).padStart(2, "0")}
+          </span>
+          {item.title}
+        </h4>
+        <p
+          className={`mt-1.5 text-[14px] leading-relaxed ${
+            done ? "text-subtle" : "text-muted"
+          }`}
+        >
+          {item.description}
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={copy}
+        aria-label={`Copy "${item.title}"`}
+        className="btn-ghost -mt-1 h-8 w-8 shrink-0 self-start !p-0 opacity-100 sm:opacity-0 sm:focus-visible:opacity-100 sm:group-hover:opacity-100"
+      >
+        {copied ? (
+          <Check className="h-4 w-4 text-success" aria-hidden />
+        ) : (
+          <Copy className="h-4 w-4" aria-hidden />
+        )}
+      </button>
+    </li>
+  );
 }
 
 export default function CategoryCard({
   category,
   items,
-  index,
+  addressed,
+  onToggle,
 }: CategoryCardProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
-  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
-  const Icon = iconMap[category.icon] || AlertTriangle;
-
-  const handleCopyItem = async (item: AnalysisItem, idx: number) => {
-    await navigator.clipboard.writeText(`${item.title}\n${item.description}`);
-    setCopiedIdx(idx);
-    setTimeout(() => setCopiedIdx(null), 1500);
-  };
+  const doneCount = items.filter((_, i) => addressed.has(findingId(category.key, i))).length;
 
   return (
-    <div className="glass overflow-hidden">
-      {/* Header */}
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between p-5 hover:bg-white/[0.02] transition-colors group"
-      >
-        <div className="flex items-center gap-3.5">
-          <div
-            className={`w-10 h-10 rounded-xl ${category.bgColor} ${category.borderColor} border flex items-center justify-center transition-transform duration-300 group-hover:scale-105`}
-          >
-            <Icon className={`w-[18px] h-[18px] ${category.color}`} />
-          </div>
-          <div className="text-left">
-            <h3 className="text-[13px] font-bold text-white flex items-center gap-2">
-              {category.label}
-              <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${category.bgColor} ${category.color}`}
-              >
-                {items.length}
-              </span>
-            </h3>
-            <p className="text-[11px] text-gray-600 mt-0.5">
-              {category.description}
-            </p>
-          </div>
+    <section
+      id={`cat-${category.key}`}
+      aria-labelledby={`cat-${category.key}-title`}
+      className="card scroll-mt-24 overflow-hidden"
+    >
+      <header className="flex items-center gap-3.5 border-b border-line px-5 py-4 sm:px-6">
+        <CategoryIcon category={category} />
+        <div className="min-w-0 flex-1">
+          <h3 id={`cat-${category.key}-title`} className="text-base font-semibold">
+            {category.label}
+          </h3>
+          <p className="text-sm text-muted">{category.description}</p>
         </div>
-        <motion.div
-          animate={{ rotate: isExpanded ? 180 : 0 }}
-          transition={{ duration: 0.2 }}
-        >
-          <ChevronDown className="w-4 h-4 text-gray-600 group-hover:text-gray-400 transition-colors" />
-        </motion.div>
-      </button>
-
-      {/* Items */}
-      <AnimatePresence initial={false}>
-        {isExpanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
-            className="overflow-hidden"
-          >
-            <div className="border-t border-white/[0.05]">
-              {items.map((item, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.04, duration: 0.3 }}
-                  className={`group/item relative px-5 py-4 ${
-                    i !== items.length - 1
-                      ? "border-b border-white/[0.03]"
-                      : ""
-                  } hover:bg-white/[0.015] transition-colors`}
-                >
-                  <div className="flex gap-3.5">
-                    {/* Number indicator */}
-                    <div className="flex-shrink-0 pt-0.5">
-                      <span
-                        className={`inline-flex items-center justify-center w-6 h-6 rounded-lg text-[10px] font-bold ${category.bgColor} ${category.color} border ${category.borderColor}`}
-                      >
-                        {i + 1}
-                      </span>
-                    </div>
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-[13px] font-semibold text-gray-200 leading-snug">
-                        {item.title}
-                      </h4>
-                      <p className="text-[12.5px] text-gray-500 leading-relaxed mt-1.5">
-                        {item.description}
-                      </p>
-                    </div>
-
-                    {/* Copy button */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCopyItem(item, i);
-                      }}
-                      className="flex-shrink-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-200 self-start mt-0.5"
-                      title="Copy"
-                    >
-                      {copiedIdx === i ? (
-                        <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      ) : (
-                        <Copy className="w-3.5 h-3.5 text-gray-600 hover:text-gray-400" />
-                      )}
-                    </button>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+        <span className="shrink-0 rounded-full bg-surface-2 px-2.5 py-1 text-xs font-medium text-muted">
+          {doneCount}/{items.length} addressed
+        </span>
+      </header>
+      <ul className="divide-y divide-line">
+        {items.map((item, i) => {
+          const id = findingId(category.key, i);
+          return (
+            <FindingRow
+              key={id}
+              category={category}
+              item={item}
+              index={i}
+              done={addressed.has(id)}
+              onToggle={() => onToggle(id)}
+            />
+          );
+        })}
+      </ul>
+    </section>
   );
 }

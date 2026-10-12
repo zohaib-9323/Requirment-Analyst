@@ -1,250 +1,204 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { AnalysisResult as AnalysisResultType } from "@/types";
+import { Check, Copy, Download, LayoutList } from "lucide-react";
+import { AnalysisResult as AnalysisResultType, CategoryKey } from "@/types";
 import { CATEGORIES } from "@/lib/constants";
-import CategoryCard from "./CategoryCard";
 import {
-  Download,
-  RotateCcw,
-  CheckCircle2,
-  LayoutGrid,
-  List,
-  Copy,
-  Check,
-} from "lucide-react";
+  buildMarkdown,
+  buildPlainText,
+  countFindings,
+  downloadFile,
+} from "@/lib/report";
+import CategoryCard from "./CategoryCard";
 
 interface AnalysisResultProps {
   result: AnalysisResultType;
-  onReset: () => void;
+  requirements: string;
 }
 
-function AnimatedCounter({ value }: { value: number }) {
-  const [count, setCount] = useState(0);
-  useEffect(() => {
-    let start = 0;
-    const duration = 600;
-    const step = Math.max(1, Math.floor(duration / value));
-    const timer = setInterval(() => {
-      start += 1;
-      setCount(start);
-      if (start >= value) clearInterval(timer);
-    }, step);
-    return () => clearInterval(timer);
-  }, [value]);
-  return <>{count}</>;
-}
-
-export default function AnalysisResult({
-  result,
-  onReset,
-}: AnalysisResultProps) {
-  const [activeTab, setActiveTab] = useState<string | null>(null);
+export default function AnalysisResult({ result, requirements }: AnalysisResultProps) {
+  const [filter, setFilter] = useState<CategoryKey | null>(null);
+  const [addressed, setAddressed] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
 
-  const totalIssues = CATEGORIES.reduce(
-    (sum, cat) => sum + (result[cat.key]?.length || 0),
-    0
-  );
+  const total = countFindings(result);
+  const visible = CATEGORIES.filter((c) => (result[c.key]?.length || 0) > 0);
+  const shown = filter ? visible.filter((c) => c.key === filter) : visible;
+  const doneCount = addressed.size;
+  const percent = total ? Math.round((doneCount / total) * 100) : 0;
 
-  const visibleCategories = CATEGORIES.filter(
-    (cat) => (result[cat.key]?.length || 0) > 0
-  );
-
-  const displayCategories = activeTab
-    ? visibleCategories.filter((c) => c.key === activeTab)
-    : visibleCategories;
-
-  const handleExport = () => {
-    let markdown = "# Requirements Analysis Report\n\n";
-    markdown += `> Generated on ${new Date().toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })}\n\n`;
-    markdown += `**Total findings:** ${totalIssues}\n\n---\n\n`;
-
-    CATEGORIES.forEach((cat) => {
-      const items = result[cat.key] || [];
-      if (items.length === 0) return;
-      markdown += `## ${cat.label} (${items.length})\n\n`;
-      markdown += `*${cat.description}*\n\n`;
-      items.forEach((item, i) => {
-        markdown += `### ${i + 1}. ${item.title}\n\n`;
-        markdown += `${item.description}\n\n`;
-      });
-      markdown += "---\n\n";
+  const toggle = (id: string) =>
+    setAddressed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
     });
 
-    const blob = new Blob([markdown], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `requirements-analysis-${Date.now()}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const copyAll = async () => {
+    try {
+      await navigator.clipboard.writeText(buildPlainText(result));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard unavailable.
+    }
   };
 
-  const handleCopyAll = async () => {
-    let text = "REQUIREMENTS ANALYSIS REPORT\n\n";
-    CATEGORIES.forEach((cat) => {
-      const items = result[cat.key] || [];
-      if (items.length === 0) return;
-      text += `── ${cat.label.toUpperCase()} (${items.length}) ──\n\n`;
-      items.forEach((item, i) => {
-        text += `${i + 1}. ${item.title}\n   ${item.description}\n\n`;
-      });
-    });
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const exportMd = () =>
+    downloadFile(
+      buildMarkdown(result, requirements, addressed),
+      `requirements-analysis-${new Date().toISOString().slice(0, 10)}.md`,
+      "text/markdown"
+    );
+
+  const filterButton = (key: CategoryKey | null, label: string, count: number, dot?: string) => {
+    const active = filter === key;
+    return (
+      <button
+        key={key ?? "all"}
+        type="button"
+        onClick={() => setFilter(key)}
+        aria-pressed={active}
+        className={`flex w-auto shrink-0 items-center gap-2.5 lg:w-full whitespace-nowrap rounded-xl px-3 py-2 text-left text-sm transition-colors ${
+          active ? "bg-surface font-semibold text-ink shadow-soft ring-1 ring-line" : "text-muted hover:bg-surface-2 hover:text-ink"
+        }`}
+      >
+        {dot ? (
+          <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} aria-hidden />
+        ) : (
+          <LayoutList className="h-4 w-4 shrink-0" aria-hidden />
+        )}
+        <span className="flex-1">{label}</span>
+        <span className="font-mono text-xs text-subtle">{count}</span>
+      </button>
+    );
   };
 
   return (
-    <div className="pt-6 pb-8">
-      {/* ── Summary Header ── */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
+    <div className="pb-8 pt-10 sm:pt-14">
+      {/* ── Summary ── */}
+      <motion.section
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="glass p-6 mb-6"
+        transition={{ duration: 0.4 }}
+        aria-labelledby="summary-title"
       >
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-              <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-white">
-                Analysis Complete
-              </h2>
-              <p className="text-sm text-gray-500 mt-0.5">
-                <span className="text-white font-semibold">{totalIssues}</span>{" "}
-                findings across {visibleCategories.length} categories
-              </p>
-            </div>
+        <p className="eyebrow">Analysis complete</p>
+        <div className="mt-2 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h1 id="summary-title" className="text-3xl font-semibold tracking-tight sm:text-4xl">
+              {total} things to talk about{" "}
+              <span className="font-serif font-normal italic text-accent">before</span> you build
+            </h1>
+            <p className="mt-2 max-w-2xl text-[15px] leading-relaxed text-muted">
+              Work through them with your team and tick each one off once it&apos;s
+              answered or added to the spec. Export the list to share it.
+            </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={handleCopyAll} className="btn-secondary !text-xs">
+          <div className="flex shrink-0 gap-2">
+            <button type="button" onClick={copyAll} className="btn-outline">
               {copied ? (
-                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <Check className="h-4 w-4 text-success" aria-hidden />
               ) : (
-                <Copy className="w-3.5 h-3.5" />
+                <Copy className="h-4 w-4" aria-hidden />
               )}
-              {copied ? "Copied!" : "Copy All"}
+              {copied ? "Copied" : "Copy all"}
             </button>
-            <button
-              onClick={handleExport}
-              className="btn-secondary !text-xs"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Export .md
-            </button>
-            <button
-              onClick={onReset}
-              className="btn-secondary !text-xs !text-indigo-400 hover:!text-indigo-300 hover:!bg-indigo-500/10 !border-indigo-500/20"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              New Analysis
+            <button type="button" onClick={exportMd} className="btn-primary !py-2">
+              <Download className="h-4 w-4" aria-hidden />
+              Export checklist
             </button>
           </div>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-5 gap-3">
-          {CATEGORIES.map((cat) => {
-            const count = result[cat.key]?.length || 0;
-            return (
-              <motion.div
-                key={cat.key}
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.2, duration: 0.3 }}
-                className={`text-center p-3 rounded-xl border transition-all duration-300 cursor-pointer ${
-                  activeTab === cat.key
-                    ? `${cat.bgColor} ${cat.borderColor}`
-                    : "border-white/[0.04] bg-white/[0.02] hover:bg-white/[0.04]"
-                }`}
-                onClick={() =>
-                  setActiveTab(activeTab === cat.key ? null : cat.key)
-                }
-              >
-                <div className={`text-2xl font-bold ${cat.color}`}>
-                  <AnimatedCounter value={count} />
-                </div>
-                <div className="text-[10px] text-gray-500 mt-1 uppercase tracking-wider font-semibold leading-tight">
-                  {cat.label.split("/")[0].trim().split(" ")[0]}
-                </div>
-              </motion.div>
-            );
-          })}
+        {/* Counts + progress */}
+        <div className="card mt-7 grid grid-cols-2 gap-px overflow-hidden bg-line lg:grid-cols-[1.4fr_repeat(5,1fr)] [&>*:last-child]:col-span-2 lg:[&>*:last-child]:col-span-1">
+          <div className="col-span-2 bg-surface p-5 lg:col-span-1">
+            <p className="text-sm font-medium text-muted">Addressed</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums">
+              {doneCount}
+              <span className="text-base font-normal text-subtle"> / {total}</span>
+            </p>
+            <div
+              role="progressbar"
+              aria-label="Findings addressed"
+              aria-valuenow={percent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-2"
+            >
+              <div
+                className="h-full rounded-full bg-success transition-[width] duration-500"
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+          </div>
+          {CATEGORIES.map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              onClick={() => setFilter(filter === c.key ? null : c.key)}
+              aria-pressed={filter === c.key}
+              className={`p-5 text-left transition-colors ${
+                filter === c.key ? c.bg : "bg-surface hover:bg-surface-2"
+              }`}
+            >
+              <p className="flex items-center gap-2 text-sm font-medium text-muted">
+                <span className={`h-2 w-2 rounded-full ${c.dot}`} aria-hidden />
+                {c.shortLabel}
+              </p>
+              <p className={`mt-1 text-2xl font-semibold tabular-nums ${c.text}`}>
+                {result[c.key]?.length || 0}
+              </p>
+            </button>
+          ))}
         </div>
-      </motion.div>
+      </motion.section>
 
-      {/* ── Filter Tabs ── */}
-      {visibleCategories.length > 1 && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-          className="flex items-center gap-2 mb-5 overflow-x-auto pb-1"
-        >
-          <button
-            onClick={() => setActiveTab(null)}
-            className={`pill whitespace-nowrap transition-all duration-200 ${
-              !activeTab
-                ? "bg-white/[0.08] border-white/[0.15] text-white"
-                : "bg-transparent border-white/[0.06] text-gray-500 hover:text-gray-300"
-            }`}
-          >
-            <LayoutGrid className="w-3 h-3" />
-            All ({totalIssues})
-          </button>
-          {visibleCategories.map((cat) => {
-            const count = result[cat.key]?.length || 0;
-            return (
-              <button
-                key={cat.key}
-                onClick={() =>
-                  setActiveTab(activeTab === cat.key ? null : cat.key)
-                }
-                className={`pill whitespace-nowrap transition-all duration-200 ${
-                  activeTab === cat.key
-                    ? `${cat.bgColor} ${cat.borderColor} ${cat.color}`
-                    : "bg-transparent border-white/[0.06] text-gray-500 hover:text-gray-300"
-                }`}
-              >
-                {cat.label.split("/")[0].trim()}
-                <span className="opacity-60">({count})</span>
-              </button>
-            );
-          })}
-        </motion.div>
-      )}
+      {/* ── Body ── */}
+      <div className="mt-10 grid min-w-0 gap-8 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <nav aria-label="Filter findings" className="min-w-0 lg:sticky lg:top-24 lg:self-start">
+          <p className="eyebrow mb-2 hidden px-3 lg:block">Categories</p>
+          <div className="-mx-4 flex gap-1 overflow-x-auto px-4 pb-1 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0">
+            {filterButton(null, "All findings", total)}
+            {visible.map((c) => filterButton(c.key, c.label, result[c.key].length, c.dot))}
+          </div>
 
-      {/* ── Category Cards ── */}
-      <div className="space-y-4">
-        {displayCategories.map((category, index) => {
-          const items = result[category.key] || [];
-          return (
+          <details className="mt-6 hidden rounded-xl border border-line p-3 text-sm lg:block">
+            <summary className="cursor-pointer select-none font-medium text-muted">
+              Your requirements
+            </summary>
+            <p className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap text-[13px] leading-relaxed text-muted">
+              {requirements}
+            </p>
+          </details>
+        </nav>
+
+        <div className="min-w-0 space-y-5">
+          {shown.map((category, i) => (
             <motion.div
               key={category.key}
-              initial={{ opacity: 0, y: 16 }}
+              initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 * index, duration: 0.4 }}
+              transition={{ delay: 0.05 * i, duration: 0.35 }}
             >
               <CategoryCard
                 category={category}
-                items={items}
-                index={index}
+                items={result[category.key]}
+                addressed={addressed}
+                onToggle={toggle}
               />
             </motion.div>
-          );
-        })}
+          ))}
+          {shown.length === 0 && (
+            <p className="card p-8 text-center text-muted">
+              No findings — your requirements look thorough.
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

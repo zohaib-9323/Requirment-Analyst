@@ -1,148 +1,124 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
-import { Brain, Check } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, X } from "lucide-react";
+import { CATEGORIES, EXPECTED_DURATION_MS } from "@/lib/constants";
+import CategoryIcon from "./CategoryIcon";
 
-const ANALYSIS_STEPS = [
-  { label: "Parsing requirements", duration: 2000 },
-  { label: "Scanning for missing requirements", duration: 3500 },
-  { label: "Identifying ambiguities", duration: 3000 },
-  { label: "Discovering edge cases", duration: 3500 },
-  { label: "Formulating technical questions", duration: 3000 },
-  { label: "Analyzing business logic", duration: 3500 },
-  { label: "Generating report", duration: 2000 },
+const STEPS = [
+  "Reading your requirements",
+  ...CATEGORIES.map((c) => `Looking for ${c.label.toLowerCase()}`),
+  "Writing up the findings",
 ];
 
-export default function LoadingState() {
-  const [currentStep, setCurrentStep] = useState(0);
+function formatTime(ms: number) {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+export default function LoadingState({
+  requirements,
+  onCancel,
+}: {
+  requirements: string;
+  onCancel: () => void;
+}) {
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setElapsed((prev) => prev + 100);
-    }, 100);
-    return () => clearInterval(interval);
+    const start = Date.now();
+    const id = setInterval(() => setElapsed(Date.now() - start), 500);
+    return () => clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    let cumulative = 0;
-    for (let i = 0; i < ANALYSIS_STEPS.length; i++) {
-      cumulative += ANALYSIS_STEPS[i].duration;
-      if (elapsed < cumulative) {
-        setCurrentStep(i);
-        return;
-      }
-    }
-    setCurrentStep(ANALYSIS_STEPS.length - 1);
-  }, [elapsed]);
+  // Progress is an estimate; ease toward 95% so it never claims to be done.
+  const ratio = elapsed / EXPECTED_DURATION_MS;
+  const progress = Math.min(95, 100 * (1 - Math.exp(-1.6 * ratio)));
+  const step = Math.min(STEPS.length - 1, Math.floor(ratio * STEPS.length));
+  const overdue = elapsed > EXPECTED_DURATION_MS * 1.2;
 
   return (
-    <div className="glass p-8 max-w-2xl mx-auto">
-      {/* Header */}
-      <div className="text-center mb-8">
-        <motion.div
-          animate={{ scale: [1, 1.08, 1] }}
-          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-          className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 mb-4"
-        >
-          <Brain className="w-7 h-7 text-indigo-400" />
-        </motion.div>
-        <h2 className="text-lg font-bold text-white">
-          Analyzing Requirements
-        </h2>
-        <p className="text-sm text-gray-500 mt-1">
-          Gemini AI is reviewing as a senior architect...
-        </p>
+    <div className="mx-auto max-w-2xl pt-12 sm:pt-16">
+      <div className="card p-6 sm:p-8">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="eyebrow">Analysis in progress</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight">
+              Reviewing your requirements…
+            </h2>
+            <p className="mt-2 text-[15px] leading-relaxed text-muted">
+              {overdue
+                ? "Taking a bit longer than usual — the AI model is still working. Hang tight."
+                : "This usually takes 1–2 minutes. Keep this tab open and the results will appear here."}
+            </p>
+          </div>
+          <button type="button" onClick={onCancel} className="btn-ghost shrink-0">
+            <X className="h-4 w-4" aria-hidden />
+            Cancel
+          </button>
+        </div>
 
-        {/* Progress bar */}
-        <div className="mt-5 w-full max-w-xs mx-auto">
-          <div className="h-1 bg-white/[0.06] rounded-full overflow-hidden">
-            <motion.div
-              className="h-full rounded-full"
-              style={{
-                background:
-                  "linear-gradient(90deg, #6366f1, #8b5cf6, #a78bfa)",
-              }}
-              initial={{ width: "0%" }}
-              animate={{
-                width: `${Math.min(
-                  ((currentStep + 1) / ANALYSIS_STEPS.length) * 100,
-                  95
-                )}%`,
-              }}
-              transition={{ duration: 0.5, ease: "easeOut" }}
+        <div className="mt-7">
+          <div className="flex items-center justify-between text-sm">
+            <span aria-live="polite" className="font-medium">
+              {STEPS[step]}
+            </span>
+            <span className="font-mono text-xs text-subtle">
+              {formatTime(elapsed)}
+            </span>
+          </div>
+          <div
+            role="progressbar"
+            aria-label="Estimated progress"
+            aria-valuenow={Math.round(progress)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            className="mt-3 h-2 overflow-hidden rounded-full bg-surface-2"
+          >
+            <div
+              className="h-full rounded-full bg-accent transition-[width] duration-500 ease-out"
+              style={{ width: `${progress}%` }}
             />
           </div>
         </div>
-      </div>
 
-      {/* Steps */}
-      <div className="space-y-1">
-        {ANALYSIS_STEPS.map((step, i) => {
-          const isCompleted = i < currentStep;
-          const isActive = i === currentStep;
-
-          return (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.08, duration: 0.3 }}
-              className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-300 ${
-                isActive
-                  ? "bg-indigo-500/[0.06] border border-indigo-500/10"
-                  : isCompleted
-                  ? "opacity-50"
-                  : "opacity-25"
-              }`}
-            >
-              {/* Status indicator */}
-              <div className="flex-shrink-0 w-5 h-5 flex items-center justify-center">
-                {isCompleted ? (
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                ) : isActive ? (
-                  <div className="flex gap-0.5">
-                    {[0, 1, 2].map((d) => (
-                      <motion.div
-                        key={d}
-                        className="w-1 h-1 rounded-full bg-indigo-400"
-                        animate={{ opacity: [0.3, 1, 0.3] }}
-                        transition={{
-                          duration: 0.8,
-                          repeat: Infinity,
-                          delay: d * 0.2,
-                        }}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="w-1.5 h-1.5 rounded-full bg-gray-700" />
-                )}
-              </div>
-
-              <span
-                className={`text-sm ${
-                  isActive
-                    ? "text-gray-200 font-medium"
-                    : isCompleted
-                    ? "text-gray-500"
-                    : "text-gray-700"
+        <ol className="mt-7 space-y-1">
+          {STEPS.map((label, i) => {
+            const done = i < step;
+            const active = i === step;
+            const cat = i > 0 && i <= CATEGORIES.length ? CATEGORIES[i - 1] : null;
+            return (
+              <li
+                key={label}
+                className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors ${
+                  active ? "bg-accent-soft font-medium text-ink" : done ? "text-muted" : "text-subtle/70"
                 }`}
               >
-                {step.label}
-              </span>
-            </motion.div>
-          );
-        })}
+                <span className="flex h-5 w-5 items-center justify-center">
+                  {done ? (
+                    <Check className="h-4 w-4 text-success" aria-label="Done" />
+                  ) : active ? (
+                    <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-accent" />
+                  ) : (
+                    <span className="h-1.5 w-1.5 rounded-full bg-line" />
+                  )}
+                </span>
+                <span className="flex-1">{label}</span>
+                {cat && (active || done) && <CategoryIcon category={cat} size="sm" />}
+              </li>
+            );
+          })}
+        </ol>
       </div>
 
-      {/* Time */}
-      <div className="text-center mt-6">
-        <span className="text-[11px] text-gray-700 font-mono">
-          {(elapsed / 1000).toFixed(1)}s elapsed
-        </span>
-      </div>
+      <details className="group mt-4 rounded-2xl border border-line px-5 py-3 text-sm">
+        <summary className="cursor-pointer select-none font-medium text-muted marker:text-subtle">
+          What you submitted
+        </summary>
+        <p className="mt-3 max-h-60 overflow-auto whitespace-pre-wrap leading-relaxed text-muted">
+          {requirements}
+        </p>
+      </details>
     </div>
   );
 }

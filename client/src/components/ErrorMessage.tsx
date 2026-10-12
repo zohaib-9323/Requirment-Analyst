@@ -1,61 +1,51 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { AlertCircle, RotateCcw, ArrowRight } from "lucide-react";
+import { AlertCircle, RotateCcw, X } from "lucide-react";
+import { toFriendlyError } from "@/lib/errors";
 
 interface ErrorMessageProps {
   message: string;
-  onRetry?: () => void;
+  onRetry: () => void;
+  onDismiss: () => void;
 }
 
-export default function ErrorMessage({ message, onRetry }: ErrorMessageProps) {
-  const isRateLimit = message.toLowerCase().includes("429") || message.toLowerCase().includes("quota");
+export default function ErrorMessage({ message, onRetry, onDismiss }: ErrorMessageProps) {
+  const { title, hint, details } = toFriendlyError(message);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="glass border-red-500/10 max-w-2xl mx-auto overflow-hidden"
+    <div
+      role="alert"
+      className="mb-5 rounded-2xl border border-danger/30 bg-danger/[0.06] p-5"
     >
-      {/* Red accent bar */}
-      <div className="h-0.5 bg-gradient-to-r from-red-500/40 via-red-500/20 to-transparent" />
-
-      <div className="p-6">
-        <div className="flex items-start gap-4">
-          <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/15 flex items-center justify-center flex-shrink-0">
-            <AlertCircle className="w-5 h-5 text-red-400" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-bold text-red-400">
-              Analysis Failed
-            </h3>
-            <p className="text-[13px] text-gray-400 mt-1.5 leading-relaxed break-words">
-              {message}
+      <div className="flex items-start gap-3.5">
+        <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-danger" aria-hidden />
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[15px] font-semibold">{title}</h2>
+          <p className="mt-1 text-sm leading-relaxed text-muted">{hint}</p>
+          <details className="mt-2 text-sm">
+            <summary className="cursor-pointer select-none text-subtle hover:text-muted">
+              Technical details
+            </summary>
+            <p className="mt-2 break-words rounded-lg bg-surface-2 p-3 font-mono text-xs leading-relaxed text-muted">
+              {details}
             </p>
-
-            {isRateLimit && (
-              <div className="mt-3 p-3 rounded-lg bg-amber-500/[0.05] border border-amber-500/10">
-                <p className="text-[12px] text-amber-400/80 leading-relaxed">
-                  This is a rate limit error from the Gemini API free tier. Wait about 30 seconds and try again, or upgrade your API plan for higher limits.
-                </p>
-              </div>
-            )}
-
-            <div className="flex items-center gap-2.5 mt-4">
-              {onRetry && (
-                <button
-                  onClick={onRetry}
-                  className="btn-secondary !text-xs !text-red-400 hover:!text-red-300 !border-red-500/20 hover:!bg-red-500/10"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  Try Again
-                </button>
-              )}
-            </div>
+          </details>
+          <div className="mt-4 flex gap-2">
+            <button type="button" onClick={onRetry} className="btn-outline">
+              <RotateCcw className="h-4 w-4" aria-hidden />
+              Try again
+            </button>
           </div>
         </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss error"
+          className="btn-ghost !p-1.5"
+        >
+          <X className="h-4 w-4" aria-hidden />
+        </button>
       </div>
-    </motion.div>
+    </div>
   );
 }
