@@ -31,6 +31,11 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Analyst Server running on http://localhost:${PORT}`);
-});
+// On Vercel the platform serves the exported app; locally we listen ourselves.
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`🚀 Analyst Server running on http://localhost:${PORT}`);
+  });
+}
+
+module.exports = app;
